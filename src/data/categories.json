@@ -1,0 +1,52 @@
+[
+  {
+    "name": "Hero Section",
+    "count": 257,
+    "order": 1
+  },
+  {
+    "name": "Problem Agitation",
+    "count": 108,
+    "order": 2
+  },
+  {
+    "name": "The Solution",
+    "count": 168,
+    "order": 3
+  },
+  {
+    "name": "Social Proof",
+    "count": 218,
+    "order": 4
+  },
+  {
+    "name": "How It Works",
+    "count": 69,
+    "order": 5
+  },
+  {
+    "name": "FAQ",
+    "count": 55,
+    "order": 6
+  },
+  {
+    "name": "VS",
+    "count": 53,
+    "order": 7
+  },
+  {
+    "name": "CTA",
+    "count": 102,
+    "order": 8
+  },
+  {
+    "name": "Landing Page",
+    "count": 80,
+    "order": 9
+  },
+  {
+    "name": "Before/After",
+    "count": 93,
+    "order": 10
+  }
+]
