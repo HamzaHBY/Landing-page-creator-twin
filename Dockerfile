@@ -23,13 +23,17 @@ ENV PORT=8080
 
 # Bring over only what's needed at runtime:
 # - dist/   → bundled client + server (incl. /api/generate)
-# - node_modules → expo + openai + sharp dependencies
-# - package.json → for `npx expo serve`
+# - node_modules → expo-server + connect + send + sharp + fetch deps
+# - server.js → custom Node server that disables HTTP timeouts so long
+#               generate calls (60-120 s) aren't killed at 91 s by
+#               `npx expo serve`'s default Node `headersTimeout`.
+# - package.json + app.json → resolution of expo-server / Expo Router
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/app.json ./app.json
+COPY --from=builder /app/server.js ./server.js
 
 EXPOSE 8080
 
-CMD ["npx", "expo", "serve", "dist", "--port", "8080"]
+CMD ["node", "server.js"]

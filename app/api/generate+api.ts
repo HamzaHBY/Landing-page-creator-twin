@@ -34,7 +34,9 @@ const FAL_GPT_IMAGE_MODEL = 'fal-ai/gpt-image-1/edit-image';
 const FAL_RECRAFT_MODEL = 'fal-ai/recraft-v3';
 
 const FAL_POLL_INTERVAL_MS = 1500;
-const FAL_TOTAL_TIMEOUT_MS = 75_000; // stay safely below the 90 s expo-serve cap
+// The custom server (server.js) disables Node HTTP timeouts, so we can afford
+// to wait long enough for gpt-image-1 via fal queue (typical p95 ~ 90 s).
+const FAL_TOTAL_TIMEOUT_MS = 300_000;
 
 function pickGptImageSize(aspectRatio: AspectRatio): '1024x1024' | '1024x1536' | '1536x1024' {
   const a = GPT_IMAGE_SIZES[aspectRatio];
