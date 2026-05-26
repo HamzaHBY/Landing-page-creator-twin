@@ -1,0 +1,22 @@
+# fly.toml — Landing Page Creator (Twin Studio clone)
+# Set OPENAI_API_KEY and FAL_KEY via:
+#   fly secrets set OPENAI_API_KEY=sk-... FAL_KEY=...
+
+app = "landing-page-creator-twin"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
+  cpus = 1

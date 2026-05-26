@@ -28,7 +28,9 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "expo export --platform web"
+    "build": "expo export --platform web",
+    "serve": "node dist/server/_expo/functions/_serve.js || npx expo serve",
+    "serve:prod": "NODE_ENV=production npx expo serve --port ${PORT:-8081}"
   },
   "private": true
 }

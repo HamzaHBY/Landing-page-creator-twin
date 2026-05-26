@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/.expo
+**/.expo-shared
+.git
+.gitignore
+.github
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+.claude
+*.log
+README.md
+AGENTS.md
+CLAUDE.md
