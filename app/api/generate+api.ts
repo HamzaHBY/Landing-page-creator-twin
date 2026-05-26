@@ -7,11 +7,17 @@
  *   - sketch_model: "premium"     → Recraft V3 (Premium, 0.5K/1K/2K/4K)
  *
  * This route is the equivalent dispatcher. Both tiers run via fal.ai now:
- *   - Ultimate → fal-ai/gpt-image-1/edit-image (queue API, avoids the
- *     synchronous 90 s socket cap inside `npx expo serve`)
+ *   - Ultimate → fal-ai/gpt-image-1/edit-image (queue API via @fal-ai/client,
+ *     avoids the 90 s synchronous timeout of OpenAI's direct path through
+ *     the Expo runtime)
  *   - Premium  → fal-ai/recraft-v3 with a condensed <1000 char prompt
  *     (Recraft V3 rejects anything longer)
+ *
+ * Any input data: URLs are first uploaded to fal.storage so they end up as
+ * https:// URLs (the fal queue's image-download worker doesn't accept data
+ * URIs in image_urls).
  */
+import { fal } from '@fal-ai/client';
 import { buildSketchPrompt } from '../../src/lib/buildSketchPrompt';
 import { buildPremiumPrompt } from '../../src/lib/buildPremiumPrompt';
 import { buildImagePositions } from '../../src/lib/buildImagePositions';
@@ -29,14 +35,12 @@ const TEMPLATES = templatesData as unknown as SectionTemplate[];
 const falKey = process.env.FAL_KEY;
 const openaiKey = process.env.OPENAI_API_KEY;
 
-const FAL_QUEUE_BASE = 'https://queue.fal.run';
+if (falKey) {
+  fal.config({ credentials: falKey });
+}
+
 const FAL_GPT_IMAGE_MODEL = 'fal-ai/gpt-image-1/edit-image';
 const FAL_RECRAFT_MODEL = 'fal-ai/recraft-v3';
-
-const FAL_POLL_INTERVAL_MS = 1500;
-// The custom server (server.js) disables Node HTTP timeouts, so we can afford
-// to wait long enough for gpt-image-1 via fal queue (typical p95 ~ 90 s).
-const FAL_TOTAL_TIMEOUT_MS = 300_000;
 
 function pickGptImageSize(aspectRatio: AspectRatio): '1024x1024' | '1024x1536' | '1536x1024' {
   const a = GPT_IMAGE_SIZES[aspectRatio];
@@ -53,80 +57,27 @@ function pickRecraftSize(aspectRatio: AspectRatio): string {
   return a.width / a.height >= 1.6 ? 'landscape_16_9' : 'landscape_4_3';
 }
 
-interface FalSubmitResponse {
-  request_id?: string;
-  status_url?: string;
-  response_url?: string;
-  status?: string;
-  detail?: unknown;
+function dataUrlToBlob(dataUrl: string): Blob {
+  const m = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+  if (!m) throw new Error('expected base64 data URL');
+  const mime = m[1];
+  const buffer = Buffer.from(m[2], 'base64');
+  return new Blob([new Uint8Array(buffer)], { type: mime });
 }
 
-async function falSubmit(model: string, input: object): Promise<FalSubmitResponse> {
-  if (!falKey) throw new Error('FAL_KEY is not configured');
-  const r = await fetch(`${FAL_QUEUE_BASE}/${model}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Key ${falKey}`,
-    },
-    body: JSON.stringify(input),
-  });
-  const text = await r.text();
-  let parsed: FalSubmitResponse;
-  try {
-    parsed = text ? (JSON.parse(text) as FalSubmitResponse) : {};
-  } catch {
-    parsed = { detail: text };
+async function ensureHttpsUrl(url: string, name: string): Promise<string> {
+  if (url.startsWith('data:')) {
+    const blob = dataUrlToBlob(url);
+    const uploaded = await fal.storage.upload(blob);
+    return uploaded;
   }
-  if (!r.ok) {
-    const detail =
-      typeof parsed.detail === 'string'
-        ? parsed.detail
-        : parsed.detail
-          ? JSON.stringify(parsed.detail)
-          : text;
-    throw new Error(`fal.ai submit (${r.status}): ${detail}`);
-  }
-  return parsed;
+  return url;
 }
 
-async function falPollResult(
-  statusUrl: string,
-  responseUrl: string,
-  totalTimeoutMs: number,
-): Promise<Record<string, unknown>> {
-  if (!falKey) throw new Error('FAL_KEY is not configured');
-  const headers = { Authorization: `Key ${falKey}` };
-  const deadline = Date.now() + totalTimeoutMs;
-
-  while (Date.now() < deadline) {
-    const s = await fetch(statusUrl, { headers });
-    if (!s.ok) {
-      const t = await s.text();
-      throw new Error(`fal.ai status (${s.status}): ${t}`);
-    }
-    const data = (await s.json()) as { status?: string };
-    if (data?.status === 'COMPLETED') {
-      const rsp = await fetch(responseUrl, { headers });
-      if (!rsp.ok) {
-        const t = await rsp.text();
-        throw new Error(`fal.ai response (${rsp.status}): ${t}`);
-      }
-      return (await rsp.json()) as Record<string, unknown>;
-    }
-    if (data?.status === 'FAILED' || data?.status === 'ERROR') {
-      throw new Error(`fal.ai job failed: ${JSON.stringify(data)}`);
-    }
-    await new Promise((res) => setTimeout(res, FAL_POLL_INTERVAL_MS));
-  }
-  throw new Error(`fal.ai job timed out after ${totalTimeoutMs}ms`);
-}
-
-function pickImageUrlFromResult(result: Record<string, unknown>): string | null {
-  const images = (result as { images?: Array<{ url?: string }> }).images;
-  if (Array.isArray(images) && images[0]?.url) return images[0].url;
-  const image = (result as { image?: { url?: string } }).image;
-  if (image?.url) return image.url;
+function pickImageUrlFromResult(data: unknown): string | null {
+  const obj = data as { images?: Array<{ url?: string }>; image?: { url?: string } };
+  if (Array.isArray(obj.images) && obj.images[0]?.url) return obj.images[0].url;
+  if (obj.image?.url) return obj.image.url;
   return null;
 }
 
@@ -169,13 +120,13 @@ export async function POST(req: Request): Promise<Response> {
     brief: body.brief,
   });
 
-  // ── Ultimate tier → fal-ai/gpt-image-1/edit-image (queue API) ─────────────
+  // ── Ultimate tier → fal-ai/gpt-image-1/edit-image ─────────────────────────
   if (body.quality === 'ultimate') {
     if (!falKey) {
       return Response.json(
         {
           error:
-            'FAL_KEY is not configured on the server. Ultimate is routed through fal.ai (fal-ai/gpt-image-1/edit-image) to avoid the 90 s synchronous timeout of the Expo runtime.',
+            'FAL_KEY is not configured on the server. Ultimate is routed through fal.ai (fal-ai/gpt-image-1/edit-image).',
           prompt,
         } satisfies GenerateResponse,
         { status: 500 },
@@ -183,25 +134,32 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     try {
-      const size = pickGptImageSize(body.aspectRatio);
-      const submitted = await falSubmit(FAL_GPT_IMAGE_MODEL, {
-        prompt,
-        image_urls: imageUrls,
-        image_size: size,
-        num_images: 1,
-        quality: 'high',
-        output_format: body.outputFormat === 'jpeg' ? 'jpeg' : body.outputFormat,
-      });
-      if (!submitted.status_url || !submitted.response_url) {
-        throw new Error(`fal.ai submit returned no status/response url: ${JSON.stringify(submitted)}`);
-      }
-      const result = await falPollResult(
-        submitted.status_url,
-        submitted.response_url,
-        FAL_TOTAL_TIMEOUT_MS,
+      // Upload any data: URIs to fal.storage so the queue worker can fetch them
+      const hostedUrls = await Promise.all(
+        imageUrls.map((u, i) => ensureHttpsUrl(u, `img-${i}.png`)),
       );
-      const url = pickImageUrlFromResult(result);
-      if (!url) throw new Error(`fal.ai returned no image url: ${JSON.stringify(result).slice(0, 400)}`);
+
+      const size = pickGptImageSize(body.aspectRatio);
+      const outputFormat =
+        body.outputFormat === 'jpeg' ? 'jpeg' : body.outputFormat === 'webp' ? 'webp' : 'png';
+
+      const result = await fal.subscribe(FAL_GPT_IMAGE_MODEL, {
+        input: {
+          prompt,
+          image_urls: hostedUrls,
+          image_size: size,
+          num_images: 1,
+          quality: 'high',
+          output_format: outputFormat,
+        },
+      });
+
+      const url = pickImageUrlFromResult(result.data);
+      if (!url) {
+        throw new Error(
+          `fal.ai returned no image url: ${JSON.stringify(result.data).slice(0, 400)}`,
+        );
+      }
       return Response.json({ imageUrl: url, prompt } satisfies GenerateResponse);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -235,21 +193,20 @@ export async function POST(req: Request): Promise<Response> {
         brief: body.brief,
       });
 
-      const submitted = await falSubmit(FAL_RECRAFT_MODEL, {
-        prompt: condensedPrompt,
-        image_size: pickRecraftSize(body.aspectRatio),
-        style: 'realistic_image',
+      const result = await fal.subscribe(FAL_RECRAFT_MODEL, {
+        input: {
+          prompt: condensedPrompt,
+          image_size: pickRecraftSize(body.aspectRatio),
+          style: 'realistic_image',
+        },
       });
-      if (!submitted.status_url || !submitted.response_url) {
-        throw new Error(`fal.ai submit returned no status/response url: ${JSON.stringify(submitted)}`);
+
+      const url = pickImageUrlFromResult(result.data);
+      if (!url) {
+        throw new Error(
+          `fal.ai returned no image url: ${JSON.stringify(result.data).slice(0, 400)}`,
+        );
       }
-      const result = await falPollResult(
-        submitted.status_url,
-        submitted.response_url,
-        FAL_TOTAL_TIMEOUT_MS,
-      );
-      const url = pickImageUrlFromResult(result);
-      if (!url) throw new Error(`fal.ai returned no image url: ${JSON.stringify(result).slice(0, 400)}`);
       return Response.json({ imageUrl: url, prompt } satisfies GenerateResponse);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
