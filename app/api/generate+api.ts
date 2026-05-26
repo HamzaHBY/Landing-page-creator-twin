@@ -17,7 +17,7 @@
  * https:// URLs (the fal queue's image-download worker doesn't accept data
  * URIs in image_urls).
  */
-import { fal } from '@fal-ai/client';
+import { fal, ApiError } from '@fal-ai/client';
 import { buildSketchPrompt } from '../../src/lib/buildSketchPrompt';
 import { buildPremiumPrompt } from '../../src/lib/buildPremiumPrompt';
 import { buildImagePositions } from '../../src/lib/buildImagePositions';
@@ -79,6 +79,16 @@ function pickImageUrlFromResult(data: unknown): string | null {
   if (Array.isArray(obj.images) && obj.images[0]?.url) return obj.images[0].url;
   if (obj.image?.url) return obj.image.url;
   return null;
+}
+
+function formatFalError(e: unknown): string {
+  if (e instanceof ApiError) {
+    const body = (e as ApiError<unknown>).body;
+    const bodyStr =
+      typeof body === 'string' ? body : body ? JSON.stringify(body).slice(0, 800) : '';
+    return `fal.ai (${e.status}): ${bodyStr || e.message}`;
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -162,9 +172,8 @@ export async function POST(req: Request): Promise<Response> {
       }
       return Response.json({ imageUrl: url, prompt } satisfies GenerateResponse);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
       return Response.json(
-        { error: message, prompt } satisfies GenerateResponse,
+        { error: formatFalError(e), prompt } satisfies GenerateResponse,
         { status: 500 },
       );
     }
@@ -209,9 +218,8 @@ export async function POST(req: Request): Promise<Response> {
       }
       return Response.json({ imageUrl: url, prompt } satisfies GenerateResponse);
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
       return Response.json(
-        { error: message, prompt } satisfies GenerateResponse,
+        { error: formatFalError(e), prompt } satisfies GenerateResponse,
         { status: 500 },
       );
     }
