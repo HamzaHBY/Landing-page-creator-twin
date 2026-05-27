@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { CanvasArea } from '../src/components/CanvasArea';
 import { ResultModal } from '../src/components/ResultModal';
@@ -8,6 +8,7 @@ import { TopBar } from '../src/components/TopBar';
 import { COLORS, ZONE_COLORS } from '../src/lib/constants';
 import { renderSketchDataUrl } from '../src/lib/renderSketch';
 import { uploadImageFile } from '../src/lib/uploadImage';
+import { pickDefaultZones } from '../src/lib/pickDefaultZones';
 import templatesData from '../src/data/templates.json';
 import type {
   AspectRatio,
@@ -35,6 +36,10 @@ export default function CanvasBuilder() {
 
   const [zones, setZones] = useState<Zone[]>([]);
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setZones((prev) => (prev.length === 0 ? pickDefaultZones(TEMPLATES) : prev));
+  }, []);
 
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [country, setCountry] = useState('');
@@ -65,6 +70,16 @@ export default function CanvasBuilder() {
       };
       return [...prev, z];
     });
+  }, []);
+
+  const autoGenerateZones = useCallback(() => {
+    setZones(pickDefaultZones(TEMPLATES));
+    setSelectedZoneId(null);
+  }, []);
+
+  const clearZones = useCallback(() => {
+    setZones([]);
+    setSelectedZoneId(null);
   }, []);
 
   const addBlankZone = useCallback(() => {
@@ -226,7 +241,12 @@ export default function CanvasBuilder() {
         generating={generating}
       />
       <View style={styles.body}>
-        <SectionLibrary onPick={addZoneFromTemplate} addBlankZone={addBlankZone} />
+        <SectionLibrary
+          onPick={addZoneFromTemplate}
+          addBlankZone={addBlankZone}
+          onAutoGenerate={autoGenerateZones}
+          onClear={clearZones}
+        />
         <CanvasArea
           zones={zones}
           aspectRatio={aspectRatio}
@@ -265,6 +285,12 @@ export default function CanvasBuilder() {
 
       <ResultModal
         visible={resultOpen}
+        generating={generating}
+        generatingLabel={
+          quality === 'ultimate'
+            ? 'Ultimate (gpt-image-1) usually takes 40–60 seconds. Keep this window open.'
+            : 'Premium (Recraft V3) usually takes 8–15 seconds.'
+        }
         imageBase64={resultImage}
         imageUrl={resultImageUrl}
         prompt={resultPrompt}

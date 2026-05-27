@@ -18,6 +18,8 @@ const TEMPLATES = templatesData as unknown as SectionTemplate[];
 interface Props {
   onPick: (template: SectionTemplate) => void;
   addBlankZone: () => void;
+  onAutoGenerate?: () => void;
+  onClear?: () => void;
 }
 
 const CATEGORY_COUNTS = (() => {
@@ -28,7 +30,7 @@ const CATEGORY_COUNTS = (() => {
 
 const CATEGORIES = (categoriesData as { name: string }[]).map((c) => c.name);
 
-export function SectionLibrary({ onPick, addBlankZone }: Props) {
+export function SectionLibrary({ onPick, addBlankZone, onAutoGenerate, onClear }: Props) {
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('Hero Section');
 
@@ -52,9 +54,22 @@ export function SectionLibrary({ onPick, addBlankZone }: Props) {
         <Text style={styles.subtitle}>{TEMPLATES.length} pre-made templates</Text>
       </View>
 
-      <Pressable onPress={addBlankZone} style={styles.addBlank}>
-        <Text style={styles.addBlankText}>＋ Add blank zone</Text>
-      </Pressable>
+      {onAutoGenerate ? (
+        <Pressable onPress={onAutoGenerate} style={styles.autoBtn}>
+          <Text style={styles.autoBtnText}>⚡ Auto-generate sections</Text>
+        </Pressable>
+      ) : null}
+
+      <View style={styles.utilityRow}>
+        <Pressable onPress={addBlankZone} style={[styles.utilityBtn, { flex: 1 }]}>
+          <Text style={styles.utilityBtnText}>＋ Blank zone</Text>
+        </Pressable>
+        {onClear ? (
+          <Pressable onPress={onClear} style={[styles.utilityBtn, { flex: 1 }]}>
+            <Text style={styles.utilityBtnText}>✕ Clear canvas</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       <TextInput
         placeholder="Search templates…"
@@ -127,16 +142,28 @@ const styles = StyleSheet.create({
   header: { marginBottom: 10 },
   title: { color: COLORS.text, fontWeight: '700', fontSize: 14 },
   subtitle: { color: COLORS.textFaint, fontSize: 11, marginTop: 2 },
-  addBlank: {
+  autoBtn: {
     paddingVertical: 10,
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  autoBtnText: { color: '#001518', fontSize: 13, fontWeight: '800' },
+  utilityRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 10,
+  },
+  utilityBtn: {
+    paddingVertical: 8,
     backgroundColor: COLORS.surfaceAlt,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 10,
   },
-  addBlankText: { color: COLORS.text, fontSize: 13, fontWeight: '600' },
+  utilityBtnText: { color: COLORS.text, fontSize: 11, fontWeight: '600' },
   search: {
     backgroundColor: COLORS.surfaceAlt,
     borderWidth: 1,

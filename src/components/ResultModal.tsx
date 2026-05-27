@@ -1,8 +1,10 @@
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { COLORS } from '../lib/constants';
 
 interface Props {
   visible: boolean;
+  generating?: boolean;
+  generatingLabel?: string;
   imageBase64?: string;
   imageUrl?: string;
   prompt?: string;
@@ -43,6 +45,15 @@ export function ResultModal(props: Props) {
                   <Text style={styles.downloadText}>Download</Text>
                 </Pressable>
               </ScrollView>
+            ) : props.generating ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
+                <Text style={styles.loadingTitle}>Generating your landing page…</Text>
+                <Text style={styles.loadingSub}>
+                  {props.generatingLabel ||
+                    'This can take 10–60 seconds depending on tier. Please keep this window open.'}
+                </Text>
+              </View>
             ) : (
               <Text style={styles.subheading}>No image yet.</Text>
             )}
@@ -123,4 +134,25 @@ const styles = StyleSheet.create({
   },
   prompt: { color: COLORS.text, fontSize: 11, lineHeight: 16, fontFamily: 'monospace' },
   error: { color: '#FFB4B4', fontSize: 12, lineHeight: 18 },
+  loadingBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  loadingTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  loadingSub: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+    textAlign: 'center',
+    maxWidth: 380,
+  },
 });
